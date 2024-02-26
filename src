@@ -1,6 +1,0 @@
-/
-├── src/
-│   ├── __init__.py
-│   └── spotify_api.py
-├── README.md
-└── LICENSE
