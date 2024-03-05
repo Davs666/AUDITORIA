@@ -1,21 +1,25 @@
-import mysql.connector
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# Conexión a la base de datos
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="",
-    database="api"
-)
+# Conexión a la base de datos MySQL con SQLAlchemy
+SQLALCHEMY_DATABASE_URL = "mysql://root:@localhost/api"
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Modelo de datos para la canción
-class Cancion(BaseModel):
-    titulo: str
-    artista: str
-    fecha_lanzamiento: str
-    genero: str
+# Definición de la clase base para las tablas
+Base = declarative_base()
+
+# Definición del modelo de datos para la canción utilizando SQLAlchemy
+class Cancion(Base):
+    __tablename__ = "canciones"
+    id = Column(Integer, primary_key=True, index=True)
+    titulo = Column(String, index=True)
+    artista = Column(String, index=True)
+    fecha_lanzamiento = Column(String)
+    genero = Column(String)
 
 # Inicialización de la aplicación FastAPI
 app = FastAPI()
@@ -23,40 +27,43 @@ app = FastAPI()
 # Rutas CRUD
 @app.post("/canciones/")
 def crear_cancion(cancion: Cancion):
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO canciones (titulo, artista, fecha_lanzamiento, genero) VALUES (%s, %s, %s, %s)",
-        (cancion.titulo, cancion.artista, cancion.fecha_lanzamiento, cancion.genero)
-    )
-    conn.commit()
-    cursor.close()
+    db = SessionLocal()
+    db.add(cancion)
+    db.commit()
+    db.close()
     return {"mensaje": "Canción creada exitosamente"}
 
 @app.get("/canciones/{cancion_id}")
 def obtener_cancion(cancion_id: int):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM canciones WHERE id=%s", (cancion_id,))
-    cancion = cursor.fetchone()
-    cursor.close()
+    db = SessionLocal()
+    cancion = db.query(Cancion).filter(Cancion.id == cancion_id).first()
+    db.close()
     if not cancion:
         raise HTTPException(status_code=404, detail="Canción no encontrada")
-    return {"id": cancion[0], "titulo": cancion[1], "artista": cancion[2], "fecha_lanzamiento": cancion[3], "genero": cancion[4]}
+    return cancion
 
 @app.put("/canciones/{cancion_id}")
 def actualizar_cancion(cancion_id: int, cancion: Cancion):
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE canciones SET titulo=%s, artista=%s, fecha_lanzamiento=%s, genero=%s WHERE id=%s",
-        (cancion.titulo, cancion.artista, cancion.fecha_lanzamiento, cancion.genero, cancion_id)
-    )
-    conn.commit()
-    cursor.close()
+    db = SessionLocal()
+    db_query = db.query(Cancion).filter(Cancion.id == cancion_id)
+    db_cancion = db_query.first()
+    if not db_cancion:
+        db.close()
+        raise HTTPException(status_code=404, detail="Canción no encontrada")
+    db_query.update(cancion.dict())
+    db.commit()
+    db.close()
     return {"mensaje": "Canción actualizada exitosamente"}
 
 @app.delete("/canciones/{cancion_id}")
 def eliminar_cancion(cancion_id: int):
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM canciones WHERE id=%s", (cancion_id,))
-    conn.commit()
-    cursor.close()
+    db = SessionLocal()
+    db_query = db.query(Cancion).filter(Cancion.id == cancion_id)
+    db_cancion = db_query.first()
+    if not db_cancion:
+        db.close()
+        raise HTTPException(status_code=404, detail="Canción no encontrada")
+    db_query.delete(synchronize_session=False)
+    db.commit()
+    db.close()
     return {"mensaje": "Canción eliminada exitosamente"}
